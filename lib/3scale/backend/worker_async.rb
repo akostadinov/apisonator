@@ -9,8 +9,7 @@ module ThreeScale
       include Backend::Worker
       include Configurable
 
-      DEFAULT_MAX_CONCURRENT_JOBS = 20
-      private_constant :DEFAULT_MAX_CONCURRENT_JOBS
+      DEFAULT_MAX_CONCURRENT_JOBS = Worker::DEFAULT_MAX_CONCURRENT_JOBS
 
       DEFAULT_MAX_PENDING_JOBS = 100
       private_constant :DEFAULT_MAX_PENDING_JOBS
@@ -33,6 +32,9 @@ module ThreeScale
 
         Sync do
           register_worker
+        end
+
+        Sync do
           start_to_fetch_jobs
           process_all
         end
@@ -67,7 +69,13 @@ module ThreeScale
 
           # If job is nil, it means that the queue is closed. No more jobs are
           # going to be pushed, so quit.
-          break unless job
+          unless job
+            break if @jobs.closed?
+
+            Worker.logger.error("Worker received a nil job from queue.")
+
+            next
+          end
 
           semaphore.async { perform(job) }
 
